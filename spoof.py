@@ -85,10 +85,10 @@ if __name__ == "__main__":
     arp = ARPSpoofer()
     if args.status:
         print(dumps(arp.report_net_status(), indent=4))
-    if args.scan:
-        arp.scan_network()
+    # if args.scan:
+    arp.scan_network('arp')
 
-    target_ip = "172.16.7.223"
+    target_ip = "172.16.6.109"
     # target_mac = "06:d2:f9:3f:b1:67".replace(":", ".")
 
     arp.spoof_mac(target_ip, spoof_source=False)

