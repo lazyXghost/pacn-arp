@@ -48,6 +48,7 @@ class ARPSpoofer:
 
         self.spoofed_clients = []
         self.spoofer_proc = None
+        self.mitm_proc = None
 
     def scan_network(self, scanning_method):
         if scanning_method == "arp":
@@ -97,7 +98,7 @@ class ARPSpoofer:
         elif scanning_method == 'nmap':
             pass
 
-    def spoof_client(self, client_ip, spoof_source=False):
+    def spoof_client(self, client_ip, attack_type, spoof_source=False):
         if not self.is_client_present(client_ip):
             raise Scapy_Exception(f"Client IP {client_ip} not present on network")
 
@@ -106,7 +107,7 @@ class ARPSpoofer:
         if response is not None:
             mac = response.hwsrc
             self.spoofed_clients.append(
-                {"original_IP": client_ip, "original_MAC": mac}
+                {"original_IP": client_ip, "original_MAC": mac, "attack_type": attack_type}
             )
             logger.debug("Client added to spoofed_clients list")
         else:
@@ -121,16 +122,25 @@ class ARPSpoofer:
 
                 [sendp(x, verbose=False) for x in packets]
             time.sleep(0.1)
+    
+    def mitm_func(self):
+        while True:
+            print("Mitm will be implemented here")
+            time.sleep(0.1)
 
     def start_spoofing_process(self):
         self.spoofer_proc = Process(target=self.spoofing_func)
+        self.mitm_proc = Process(target=self.mitm_func)
         self.spoofer_proc.start()
+        self.mitm_proc.start()
         logger.debug("Started spoofing process")
 
     def stop_spoofing_process(self):
         if self.spoofer_proc != None:
             self.spoofer_proc.join()
+            self.mitm_proc.join()
             self.spoofer_proc = None
+            self.mitm_proc = None
         else:
             raise Scapy_Exception(f"Spoofing process not active")
         logger.debug("Stopped the spoofing process")
@@ -146,17 +156,20 @@ class ARPSpoofer:
 
 
     def is_client_present(self, client_ip):
-        icmp_packet = (
-            IP(
-                dst=client_ip,
+        try_count = 0
+        while try_count < 5:
+            icmp_packet = (
+                IP(
+                    dst=client_ip,
+                )
+                / ICMP()
             )
-            / ICMP()
-        )
 
-        response = sr1(icmp_packet, timeout=2, verbose=False)
-        if response is None:
-            return False
-        return True
+            response = sr1(icmp_packet, timeout=2, verbose=False)
+            if response is not None:
+                return True
+            try_count += 1
+        return False
 
 
     # def report_net_status(self):

@@ -17,7 +17,7 @@ def hello():
             while time.time() - start_time < float(attack_time):
                 print(time.time() - start_time, float(attack_time))
                 try:
-                    arp.spoof_mac(target_ip, spoof_source=False)
+                    arp.spoof_client(target_ip, attack_type)
                 except Exception as e:
                     print(e)
                 time.sleep(0.1)
