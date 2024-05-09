@@ -3,6 +3,7 @@ from arpSpoofer import ARPSpoofer
 import time
 
 arp = ARPSpoofer()
+arp.start_spoofing_process()
 app = Flask(__name__)
 
 @app.route("/", methods=['GET', 'POST'])
