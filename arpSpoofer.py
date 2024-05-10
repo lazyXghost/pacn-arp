@@ -16,13 +16,6 @@ class ARPSpoofer:
             self.subnet_mask = netifaces.ifaddresses(self.interface)[netifaces.AF_INET][0]["netmask"]
             self.host_ip = netifaces.ifaddresses(self.interface)[netifaces.AF_INET][0]["addr"]
             self.host_mac = netifaces.ifaddresses(self.interface)[netifaces.AF_LINK][0]["addr"]
-
-            self.mac_resolver = {}
-            with open("oui.txt", "r", encoding="utf-8") as oui:
-                resolver_data = "\n".join(oui.readlines()).split("\n\n\n")
-                for one_resolver_data in resolver_data:
-                    self.mac_resolver[one_resolver_data.split("\n")[1].split("   ")[0]] = one_resolver_data.split("\n")[1].split("\t")[-1]
-
             self.spoofing_clients = []
         except Exception as e:
             print(e)
@@ -45,27 +38,13 @@ class ARPSpoofer:
             arp_request = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=network_ip)
 
             result = srp(arp_request, timeout=3, verbose=False)[0]
-            arp_responses = []
-
+            arp_responses = {}
             for _, received in result:
-                arp_responses.append(
-                    {
-                        "IP": received.psrc,
-                        "MAC": received.hwsrc
-                    }
-                )
-
-            sorted_data = sorted(arp_responses, key=lambda x: x["MAC"])
-
-            logger.debug("IP\t\tMAC\t\t\tDEVICE")
-            for client in sorted_data:
-                try:
-                    mac_resolved = self.mac_resolver[
-                        client["MAC"][:8].replace(":", "-").upper()
-                    ]
-                except Exception as e:
-                    mac_resolved = ""
-                logger.debug(f'{client["IP"]}\t{client["MAC"]}\t{mac_resolved}')
+                arp_responses[received.psrc] = received.hwsrc
+            logger.debug("IP\t\tMAC")
+            for client in arp_responses.keys():
+                logger.debug(f'{client}\t{arp_responses[client]}')
+            return arp_responses
         elif scanning_method == 'nmap':
             pass
 

