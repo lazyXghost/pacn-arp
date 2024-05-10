@@ -1,1 +1,0 @@
-python spoof.py --sender_ip 172.16.7.56 --sender_mac 6c:6a:77:5d:db:80 --router_ip 172.16.7.1 --router_mac 00:1c:73:00:00:77 --target_ip 10.8.200.6 --target_mac bc:e9:2f:a1:44:7a

@@ -52,11 +52,9 @@ if __name__ == '__main__':
     # ap.add_argument(
     #     "ip_addresses", nargs="*", help="one or more ipaddresses to spoof MAC for"
     # )
-    ap.add_argument("--task", help="Values: attack, scan")
     ap.add_argument("-d", "--debug", action="store_true", help="enable debug logging")
-    # ap.add_argument(
-    #     "--status", action="store_true", help="check network status and info"
-    # )
+    ap.add_argument("--status", action="store_true", help="check network status and info")
+    ap.add_argument("--task", help="Values: attack, scan")
     args = ap.parse_args()
 
     arp = ARPSpoofer()
@@ -64,6 +62,16 @@ if __name__ == '__main__':
         basicConfig(level=DEBUG)
     else:
         basicConfig(level=WARNING)
+
+    if args.status:
+        print({
+            "gateway_ip": arp.gateway_ip,
+            "gateway_mac": arp.gateway_mac,
+            "interface": arp.interface,
+            "subnet_mask": arp.subnet_mask,
+            "host_ip": arp.host_ip,
+            "host_mac": arp.host_mac
+        })
 
     if args.task == 'scan':
         ap.add_argument(
